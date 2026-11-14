@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080808">
+  <meta name="description" content="Convierte vídeos de YouTube a MP3 o MP4 de forma sencilla.">
+  <title>Convertidor — YouTube a MP3 y MP4</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header class="heading">
+      <div class="mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+      <p class="eyebrow">TU CONTENIDO, A TU MANERA</p>
+      <h1>Un enlace.<br><span>Y listo.</span></h1>
+      <p class="subtitle">Convierte vídeos de YouTube a audio o vídeo<br class="desktop-break"> en unos pocos clics.</p>
+    </header>
+
+    <form id="converter" class="converter">
+      <label class="sr-only" for="url">Enlace de YouTube</label>
+      <div class="input-wrap">
+        <svg class="link-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10 13.5a4 4 0 0 0 5.66 0l3-3A4 4 0 0 0 13 4.84l-1.72 1.72M14 10.5a4 4 0 0 0-5.66 0l-3 3A4 4 0 1 0 11 19.16l1.72-1.72" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <input id="url" name="url" type="url" placeholder="Pega el enlace de YouTube aquí" autocomplete="off" required>
+        <button type="button" class="paste" id="paste" title="Pegar enlace">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="7" y="5" width="12" height="15" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M9 5V4a2 2 0 0 1 2-2h1a2 2 0 0 1 2 2v1M7 8H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span>Pegar</span>
+        </button>
+      </div>
+      <div class="controls">
+        <fieldset class="format-switch">
+          <legend class="sr-only">Formato de descarga</legend>
+          <label><input type="radio" name="format" value="mp3" checked><span><span class="format-icon">♫</span> Audio <small>MP3</small></span></label>
+          <label><input type="radio" name="format" value="mp4"><span><span class="format-icon play">▶</span> Vídeo <small>MP4</small></span></label>
+        </fieldset>
+        <button class="download" type="submit"><span>Descargar</span><span aria-hidden="true">↓</span></button>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </form>
+
+    <footer><span class="dot"></span> SIMPLE, PRIVADO Y SIN DISTRACCIONES <span class="footer-divider">/</span> HECHO PARA TI</footer>
+  </main>
+</body>
+</html>
