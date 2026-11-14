@@ -6,7 +6,6 @@ const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const youtubedl = require('youtube-dl-exec');
 
-const PORT = 3000;
 const MAX_BODY_BYTES = 8192;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const ASSETS = {
@@ -62,12 +61,31 @@ async function readJson(req) {
   }
 }
 
-function createServer(download = youtubedl) {
+function tailnetOrigin(value) {
+  if (!value) return null;
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('TAILSCALE_ORIGIN debe ser una dirección HTTPS de Tailscale.');
+  }
+  if (url.protocol !== 'https:' || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+\.ts\.net$/i.test(url.hostname)
+      || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('TAILSCALE_ORIGIN debe ser una dirección HTTPS de Tailscale.');
+  }
+  return url.origin;
+}
+
+function createServer(download = youtubedl, configuredTailnetOrigin = null) {
+  const remoteOrigin = tailnetOrigin(configuredTailnetOrigin);
   return http.createServer(async (req, res) => {
     const address = req.socket.localAddress;
     const host = req.headers.host;
-    const allowedHosts = [`127.0.0.1:${req.socket.localPort}`, `localhost:${req.socket.localPort}`];
-    if (!allowedHosts.includes(host) || (address !== '127.0.0.1' && address !== '::ffff:127.0.0.1')) {
+    const localHosts = [`127.0.0.1:${req.socket.localPort}`, `localhost:${req.socket.localPort}`];
+    const allowedOrigin = localHosts.includes(host)
+      ? `http://${host}`
+      : remoteOrigin && host === new URL(remoteOrigin).host ? remoteOrigin : null;
+    if (!allowedOrigin || (address !== '127.0.0.1' && address !== '::ffff:127.0.0.1')) {
       return sendError(res, 403, 'Acceso no permitido.');
     }
 
@@ -90,7 +108,7 @@ function createServer(download = youtubedl) {
     if (req.method !== 'POST' || req.url !== '/api/download') {
       return sendError(res, 404, 'Recurso no encontrado.');
     }
-    if (req.headers.origin !== `http://${host}` || !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) {
+    if (req.headers.origin !== allowedOrigin || !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) {
       return sendError(res, 403, 'Solicitud no permitida.');
     }
 
@@ -148,13 +166,24 @@ function createServer(download = youtubedl) {
 }
 
 if (require.main === module) {
-  const server = createServer();
+  const port = Number(process.env.PORT || 3000);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error('PORT debe ser un puerto entre 1 y 65535.');
+    process.exit(1);
+  }
+  let server;
+  try {
+    server = createServer(youtubedl, process.env.TAILSCALE_ORIGIN);
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
   server.on('error', (error) => {
     console.error('No se pudo iniciar el servidor:', error.message);
     process.exitCode = 1;
   });
-  server.listen(PORT, '127.0.0.1', () => {
-    console.log(`Convertidor disponible en http://127.0.0.1:${PORT}`);
+  server.listen(port, '127.0.0.1', () => {
+    console.log(`Convertidor disponible en http://127.0.0.1:${port}`);
   });
 }
 
