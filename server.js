@@ -4,14 +4,18 @@ const { createReadStream } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
+const { createHash, createHmac, randomBytes, timingSafeEqual } = require('node:crypto');
 const youtubedl = require('youtube-dl-exec');
 
 const MAX_BODY_BYTES = 8192;
+const SESSION_SECONDS = 12 * 60 * 60;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const ASSETS = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  '/login': ['login.html', 'text/html; charset=utf-8'],
+  '/login.js': ['login.js', 'text/javascript; charset=utf-8'],
 };
 
 function youtubeUrl(value) {
@@ -76,8 +80,23 @@ function tailnetOrigin(value) {
   return url.origin;
 }
 
-function createServer(download = youtubedl, configuredTailnetOrigin = null) {
+function createServer(download = youtubedl, configuredTailnetOrigin = null, password) {
   const remoteOrigin = tailnetOrigin(configuredTailnetOrigin);
+  if (typeof password !== 'string' || password.length < 12) {
+    throw new Error('CONVERTER_PASSWORD debe tener al menos 12 caracteres.');
+  }
+  const passwordHash = createHash('sha256').update(password).digest();
+  const sessionKey = randomBytes(32);
+  const sign = (value) => createHmac('sha256', sessionKey).update(value).digest('hex');
+  const validSession = (cookie) => {
+    const token = (cookie || '').split(';').map((part) => part.trim())
+      .find((part) => part.startsWith('convertidor_session='));
+    const value = token && token.slice('convertidor_session='.length);
+    if (!value || !/^\d{13}\.[a-f0-9]{64}\.[a-f0-9]{64}$/.test(value)) return false;
+    const [expires, nonce, signature] = value.split('.');
+    if (Number(expires) <= Date.now()) return false;
+    return timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(sign(`${expires}.${nonce}`), 'hex'));
+  };
   return http.createServer(async (req, res) => {
     const address = req.socket.localAddress;
     const host = req.headers.host;
@@ -89,7 +108,18 @@ function createServer(download = youtubedl, configuredTailnetOrigin = null) {
       return sendError(res, 403, 'Acceso no permitido.');
     }
 
+    const authenticated = validSession(req.headers.cookie);
+
     if (req.method === 'GET' && ASSETS[req.url]) {
+      if (req.url === '/' && !authenticated) {
+        res.writeHead(303, { Location: '/login', 'Cache-Control': 'no-store' });
+        return res.end();
+      }
+      if (req.url === '/app.js' && !authenticated) return sendError(res, 401, 'Inicia sesión.');
+      if (req.url === '/login' && authenticated) {
+        res.writeHead(303, { Location: '/', 'Cache-Control': 'no-store' });
+        return res.end();
+      }
       try {
         const [file, type] = ASSETS[req.url];
         const content = await fs.readFile(path.join(PUBLIC_DIR, file));
@@ -97,6 +127,7 @@ function createServer(download = youtubedl, configuredTailnetOrigin = null) {
           'Content-Type': type,
           'X-Content-Type-Options': 'nosniff',
           'Content-Security-Policy': "default-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+          'Cache-Control': 'no-store',
         });
         return res.end(content);
       } catch (error) {
@@ -105,12 +136,34 @@ function createServer(download = youtubedl, configuredTailnetOrigin = null) {
       }
     }
 
-    if (req.method !== 'POST' || req.url !== '/api/download') {
+    if (req.method !== 'POST' || !['/api/login', '/api/download'].includes(req.url)) {
       return sendError(res, 404, 'Recurso no encontrado.');
     }
     if (req.headers.origin !== allowedOrigin || !/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) {
       return sendError(res, 403, 'Solicitud no permitida.');
     }
+
+    if (req.url === '/api/login') {
+      let body;
+      try {
+        body = await readJson(req);
+      } catch (error) {
+        return sendError(res, 400, error.message);
+      }
+      if (typeof body?.password !== 'string') return sendError(res, 400, 'Introduce la contraseña.');
+      const suppliedHash = createHash('sha256').update(body.password).digest();
+      if (!timingSafeEqual(passwordHash, suppliedHash)) return sendError(res, 401, 'Contraseña incorrecta.');
+      const value = `${Date.now() + SESSION_SECONDS * 1000}.${randomBytes(32).toString('hex')}`;
+      const secure = allowedOrigin.startsWith('https:') ? '; Secure' : '';
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Set-Cookie': `convertidor_session=${value}.${sign(value)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${SESSION_SECONDS}${secure}`,
+      });
+      return res.end(JSON.stringify({ ok: true }));
+    }
+
+    if (!authenticated) return sendError(res, 401, 'Inicia sesión.');
 
     let url;
     let format;
@@ -173,7 +226,7 @@ if (require.main === module) {
   }
   let server;
   try {
-    server = createServer(youtubedl, process.env.TAILSCALE_ORIGIN);
+    server = createServer(youtubedl, process.env.TAILSCALE_ORIGIN, process.env.CONVERTER_PASSWORD);
   } catch (error) {
     console.error(error.message);
     process.exit(1);

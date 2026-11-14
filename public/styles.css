@@ -17,7 +17,7 @@ h1 span { color: #858585; }
 .input-wrap { min-height: 60px; display: flex; align-items: center; border: 1px solid #bcbcbc; border-radius: 10px; padding: 6px 7px 6px 18px; transition: border-color .2s, box-shadow .2s; }
 .input-wrap:focus-within { border-color: #fff; box-shadow: 0 0 0 3px #ffffff18; }
 .link-icon { width: 20px; height: 20px; color: #888; flex: none; }
-input[type="url"] { flex: 1; width: 0; color: #f5f5f5; background: transparent; border: 0; outline: 0; padding: 12px; font-size: 13px; }
+input[type="url"], input[type="password"] { flex: 1; width: 0; color: #f5f5f5; background: transparent; border: 0; outline: 0; padding: 12px; font-size: 13px; }
 input::placeholder { color: #707070; opacity: 1; }
 .paste { display: flex; align-items: center; gap: 7px; color: #d3d3d3; background: #1c1c1c; border: 1px solid #303030; border-radius: 6px; padding: 10px 12px; font-size: 12px; }
 .paste svg { width: 16px; height: 16px; }
@@ -36,6 +36,7 @@ input::placeholder { color: #707070; opacity: 1; }
 .download span:last-child { font-size: 20px; font-weight: normal; }
 .download:hover { background: #fff; }
 .download:disabled { cursor: wait; opacity: .6; }
+.login-button { min-height: 44px; }
 .status { min-height: 20px; margin: 13px 0 0; color: #aaa; font-size: 12px; line-height: 1.6; }
 .status.error { color: #f0a3a3; }
 footer { position: absolute; bottom: 35px; color: #606060; font-size: 9px; font-weight: bold; letter-spacing: .12em; text-align: center; }

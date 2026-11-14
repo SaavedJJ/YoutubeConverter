@@ -5,6 +5,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { once } = require('node:events');
 const { createServer, youtubeUrl } = require('../server');
+const password = 'contraseña de prueba';
 
 test('normaliza enlaces de vídeo y descarta parámetros de listas', () => {
   const expected = 'https://www.youtube.com/watch?v=abcdefghijk';
@@ -25,7 +26,7 @@ test('descarga ambos formatos, valida solicitudes y limpia archivos temporales',
     directories.push(directory);
     const extension = options.extractAudio ? 'mp3' : 'mp4';
     await fs.writeFile(path.join(directory, `prueba á.${extension}`), `contenido ${extension}`);
-  });
+  }, null, password);
 
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -37,6 +38,18 @@ test('descarga ambos formatos, valida solicitudes y limpia archivos temporales',
     body: JSON.stringify(body),
   });
 
+  assert.equal((await post({ url: 'https://youtu.be/abcdefghijk', format: 'mp3' })).status, 401);
+  const login = (value, requestOrigin = origin) => fetch(`${origin}/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: requestOrigin },
+    body: JSON.stringify({ password: value }),
+  });
+  assert.equal((await login('incorrecta')).status, 401);
+  assert.equal((await login(password, 'https://example.com')).status, 403);
+  const loginResponse = await login(password);
+  assert.equal(loginResponse.status, 200);
+  const cookie = loginResponse.headers.get('set-cookie').split(';')[0];
+
   test('permite solo el origen HTTPS Tailscale configurado sin desactivar el acceso local', async (t) => {
     assert.throws(() => createServer(undefined, 'https://ejemplo.com'));
     assert.throws(() => createServer(undefined, 'http://equipo.red.ts.net'));
@@ -45,40 +58,48 @@ test('descarga ambos formatos, valida solicitudes y limpia archivos temporales',
     const tailnet = 'https://equipo.red.ts.net';
     const server = createServer(async (_url, options) => {
       await fs.writeFile(path.join(path.dirname(options.output), 'prueba.mp3'), 'audio');
-    }, tailnet);
+    }, tailnet, password);
     server.listen(0, '127.0.0.1');
     await once(server, 'listening');
     t.after(() => new Promise((resolve) => server.close(resolve)));
     const port = server.address().port;
-    const request = (host, origin) => new Promise((resolve, reject) => {
-      const body = origin && JSON.stringify({ url: 'https://youtu.be/abcdefghijk', format: 'mp3' });
+    const request = (host, origin, cookie, loginPassword) => new Promise((resolve, reject) => {
+      const body = origin && JSON.stringify(loginPassword
+        ? { password: loginPassword }
+        : { url: 'https://youtu.be/abcdefghijk', format: 'mp3' });
       const req = http.request({
         hostname: '127.0.0.1',
         port,
-        path: origin ? '/api/download' : '/',
+        path: loginPassword ? '/api/login' : origin ? '/api/download' : '/',
         method: origin ? 'POST' : 'GET',
-        headers: { Host: host, ...(origin ? { Origin: origin, 'Content-Type': 'application/json' } : {}) },
+        headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(origin ? { Origin: origin, 'Content-Type': 'application/json' } : {}) },
       }, (res) => {
         const chunks = [];
         res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString(), cookie: res.headers['set-cookie']?.[0] }));
         res.on('error', reject);
       });
       req.on('error', reject);
       req.end(body);
     });
-    assert.equal((await request(`127.0.0.1:${port}`)).status, 200);
-    assert.equal((await request('equipo.red.ts.net')).status, 200);
+    assert.equal((await request(`127.0.0.1:${port}`)).status, 303);
+    assert.equal((await request('equipo.red.ts.net')).status, 303);
     assert.equal((await request('otro.red.ts.net')).status, 403);
-    const response = await request('equipo.red.ts.net', tailnet);
+    assert.equal((await request('equipo.red.ts.net', tailnet)).status, 401);
+    const loginResponse = await request('equipo.red.ts.net', tailnet, null, password);
+    assert.equal(loginResponse.status, 200);
+    assert.match(loginResponse.cookie, /; Secure/);
+    const remoteCookie = loginResponse.cookie.split(';')[0];
+    const response = await request('equipo.red.ts.net', tailnet, remoteCookie);
     assert.equal(response.status, 200);
     assert.equal(response.body, 'audio');
-    assert.equal((await request('equipo.red.ts.net', 'https://otro.red.ts.net')).status, 403);
-    assert.equal((await request('equipo.red.ts.net', 'http://equipo.red.ts.net')).status, 403);
+    assert.equal((await request('equipo.red.ts.net', tailnet, `${remoteCookie}a`)).status, 401);
+    assert.equal((await request('equipo.red.ts.net', 'https://otro.red.ts.net', remoteCookie)).status, 403);
+    assert.equal((await request('equipo.red.ts.net', 'http://equipo.red.ts.net', remoteCookie)).status, 403);
   });
 
   for (const format of ['mp3', 'mp4']) {
-    const response = await post({ url: 'https://youtu.be/abcdefghijk', format });
+    const response = await post({ url: 'https://youtu.be/abcdefghijk', format }, { Cookie: cookie });
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-disposition'), /filename\*=UTF-8''/);
     assert.equal(await response.text(), `contenido ${format}`);
@@ -87,9 +108,9 @@ test('descarga ambos formatos, valida solicitudes y limpia archivos temporales',
   assert.equal(calls[1].options.recodeVideo, 'mp4');
   assert.equal(calls[0].url, 'https://www.youtube.com/watch?v=abcdefghijk');
 
-  const invalid = await post({ url: 'https://example.com', format: 'mp3' });
+  const invalid = await post({ url: 'https://example.com', format: 'mp3' }, { Cookie: cookie });
   assert.equal(invalid.status, 400);
-  const foreign = await post({ url: 'https://youtu.be/abcdefghijk', format: 'mp3' }, { Origin: 'https://example.com' });
+  const foreign = await post({ url: 'https://youtu.be/abcdefghijk', format: 'mp3' }, { Origin: 'https://example.com', Cookie: cookie });
   assert.equal(foreign.status, 403);
   assert.equal(calls.length, 2);
 

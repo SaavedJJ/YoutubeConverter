@@ -15,10 +15,10 @@ En una terminal dentro de esta carpeta:
 
 ```powershell
 npm install
-npm start
+powershell -ExecutionPolicy Bypass -File .\start-private.ps1
 ```
 
-Abre <http://127.0.0.1:3000>, pega un enlace de vídeo, selecciona **Audio MP3** o **Vídeo MP4** y pulsa **Descargar**. Mantén la terminal abierta mientras utilizas la aplicación; detén el servidor con `Ctrl+C`.
+Elige una contraseña de al menos 12 caracteres cuando se solicite; no se guarda en el proyecto. Tendrás que introducirla de nuevo cada vez que inicies el servidor. Abre <http://127.0.0.1:3000>, inicia sesión, pega un enlace de vídeo, selecciona **Audio MP3** o **Vídeo MP4** y pulsa **Descargar**. Mantén la terminal abierta mientras utilizas la aplicación; detén el servidor con `Ctrl+C`. Las sesiones duran 12 horas y se invalidan al reiniciar.
 
 La aplicación solo escucha en tu equipo. Los archivos temporales se eliminan después de cada descarga. El tiempo y el espacio necesario dependen del vídeo; los archivos se preparan completos antes de enviarse al navegador. No se admiten listas completas, vídeos privados sin acceso ni restricciones que requieran autenticación. Algunos vídeos pueden no estar disponibles debido a cambios o restricciones de YouTube; consulta la terminal si se produce un error. Para actualizar yt-dlp, ejecuta `npm rebuild youtube-dl-exec`.
 
@@ -32,9 +32,7 @@ Instala Tailscale e inicia sesión en este equipo y en los dispositivos desde lo
 2. En PowerShell, configura el puerto y la dirección HTTPS exacta de este equipo, sustituyendo el ejemplo:
 
    ```powershell
-   $env:PORT = "3001"
-   $env:TAILSCALE_ORIGIN = "https://equipo.tu-red.ts.net"
-   npm start
+   powershell -ExecutionPolicy Bypass -File .\start-private.ps1 -Port 3001 -TailscaleOrigin "https://equipo.tu-red.ts.net"
    ```
 
 3. En otra terminal, inicia el proxy privado:
@@ -45,4 +43,16 @@ Instala Tailscale e inicia sesión en este equipo y en los dispositivos desde lo
 
 4. Abre la dirección HTTPS que muestra Tailscale desde un dispositivo conectado a la misma red Tailscale. El ordenador, el servidor y el comando `tailscale serve` deben permanecer encendidos. El puerto local debe estar libre.
 
-Usa **Serve**, no Funnel: Funnel expondría el servicio públicamente. El acceso también depende de las reglas de tu red Tailscale; los dispositivos autorizados por ellas podrán utilizar el convertidor. Para mantenerlo privado, revisa esas reglas y no compartas el dispositivo con personas no autorizadas.
+Usa **Serve**, no Funnel: Funnel expondría el servicio públicamente. La contraseña no incluye límites de intentos ni otras protecciones contra abusos, por lo que no se recomienda publicar el servicio. El acceso también depende de las reglas de tu red Tailscale; revisa esas reglas y no compartas el dispositivo con personas no autorizadas.
+
+## Inicio automático en Windows
+
+Para ejecutar el convertidor en segundo plano al iniciar sesión en Windows, ejecuta una sola vez en PowerShell, desde la carpeta del proyecto:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup-background.ps1 -Port 3001 -TailscaleOrigin "https://equipo.tu-red.ts.net"
+```
+
+Sustituye la dirección por la de tu equipo e introduce una contraseña de al menos 12 caracteres cuando se solicite. Se crea la tarea `YoutubeConverter-Personal` para tu usuario y se inicia inmediatamente. La contraseña se guarda cifrada por Windows en `%LOCALAPPDATA%\YoutubeConverter`, fuera del proyecto; otros procesos que se ejecuten como tu usuario pueden recuperarla. La tarea funciona mientras tu usuario haya iniciado sesión; no arranca antes del inicio de sesión ni cuando el equipo está apagado o suspendido. No muevas la carpeta del proyecto sin actualizar la tarea.
+
+La tarea inicia el servidor, no configura Tailscale. Mantén Tailscale y Serve activos. El servidor y sus errores se registran en `server.log` y `server-error.log` dentro de `%LOCALAPPDATA%\YoutubeConverter`. Para detenerlo o iniciarlo manualmente, usa el Programador de tareas de Windows y busca `YoutubeConverter-Personal`.

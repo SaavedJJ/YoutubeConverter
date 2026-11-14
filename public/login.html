@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080808">
+  <title>Acceso — Convertidor</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/login.js" defer></script>
+</head>
+<body>
+  <main class="app">
+    <header class="heading">
+      <div class="mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+      <p class="eyebrow">ACCESO PRIVADO</p>
+      <h1>Hola de <span>nuevo.</span></h1>
+      <p class="subtitle">Introduce la contraseña para acceder al convertidor.</p>
+    </header>
+    <form id="login" class="converter">
+      <label class="sr-only" for="password">Contraseña</label>
+      <div class="input-wrap">
+        <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+        <button class="download login-button" type="submit">Entrar <span aria-hidden="true">→</span></button>
+      </div>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+    </form>
+  </main>
+</body>
+</html>
