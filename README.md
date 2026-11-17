@@ -56,3 +56,19 @@ powershell -ExecutionPolicy Bypass -File .\setup-background.ps1 -Port 3001 -Tail
 Sustituye la dirección por la de tu equipo e introduce una contraseña de al menos 12 caracteres cuando se solicite. Se crea la tarea `YoutubeConverter-Personal` para tu usuario y se inicia inmediatamente. La contraseña se guarda cifrada por Windows en `%LOCALAPPDATA%\YoutubeConverter`, fuera del proyecto; otros procesos que se ejecuten como tu usuario pueden recuperarla. La tarea funciona mientras tu usuario haya iniciado sesión; no arranca antes del inicio de sesión ni cuando el equipo está apagado o suspendido. No muevas la carpeta del proyecto sin actualizar la tarea.
 
 La tarea inicia el servidor, no configura Tailscale. Mantén Tailscale y Serve activos. El servidor y sus errores se registran en `server.log` y `server-error.log` dentro de `%LOCALAPPDATA%\YoutubeConverter`. Para detenerlo o iniciarlo manualmente, usa el Programador de tareas de Windows y busca `YoutubeConverter-Personal`.
+
+## Despliegue en Cloudflare
+
+La configuración de Cloudflare ejecuta yt-dlp y FFmpeg dentro de un contenedor, a través de un Worker. **Esta versión es pública y no requiere contraseña:** cualquiera con la dirección podrá usarla y generar costes. Cloudflare Containers requiere Workers Paid; la cuota de 5 USD no garantiza un coste máximo. Los límites de gasto de Workers no cubren todos los productos. Consulta la facturación y configura alertas antes de desplegar.
+
+Requisitos: cuenta con Workers Paid, Node.js 22.12 o posterior y Docker en ejecución. Desde la carpeta del proyecto:
+
+```powershell
+npm install
+npx wrangler login
+npx wrangler deploy
+```
+
+El despliegue puede tardar varios minutos en preparar el contenedor. Cloudflare proporcionará una dirección `workers.dev`. Tras desplegar, prueba una conversión real en ambos formatos: YouTube puede bloquear solicitudes procedentes de centros de datos, y las conversiones largas pueden agotar el tiempo de espera del proxy. El contenedor dispone de 1 GiB de memoria y 4 GB de disco temporal; los archivos grandes pueden fallar. La versión local con contraseña y Tailscale sigue disponible por separado.
+
+Como alternativa a Docker local, conecta el repositorio en **Workers & Pages > Create application > GitHub**. Selecciona la rama de producción, utiliza el nombre `convertidor-youtube` y configura `npm ci` como comando de compilación y `npx wrangler deploy` como comando de despliegue. Workers Builds construye la imagen Docker en Cloudflare. No uses `wrangler versions upload` para desplegar cambios del contenedor.

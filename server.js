@@ -80,12 +80,12 @@ function tailnetOrigin(value) {
   return url.origin;
 }
 
-function createServer(download = youtubedl, configuredTailnetOrigin = null, password) {
+function createServer(download = youtubedl, configuredTailnetOrigin = null, password, cloud = false) {
   const remoteOrigin = tailnetOrigin(configuredTailnetOrigin);
-  if (typeof password !== 'string' || password.length < 12) {
+  if (!cloud && (typeof password !== 'string' || password.length < 12)) {
     throw new Error('CONVERTER_PASSWORD debe tener al menos 12 caracteres.');
   }
-  const passwordHash = createHash('sha256').update(password).digest();
+  const passwordHash = cloud ? null : createHash('sha256').update(password).digest();
   const sessionKey = randomBytes(32);
   const sign = (value) => createHmac('sha256', sessionKey).update(value).digest('hex');
   const validSession = (cookie) => {
@@ -101,14 +101,21 @@ function createServer(download = youtubedl, configuredTailnetOrigin = null, pass
     const address = req.socket.localAddress;
     const host = req.headers.host;
     const localHosts = [`127.0.0.1:${req.socket.localPort}`, `localhost:${req.socket.localPort}`];
-    const allowedOrigin = localHosts.includes(host)
+    const allowedOrigin = cloud && host === 'container'
+      ? 'http://container'
+      : localHosts.includes(host)
       ? `http://${host}`
       : remoteOrigin && host === new URL(remoteOrigin).host ? remoteOrigin : null;
-    if (!allowedOrigin || (address !== '127.0.0.1' && address !== '::ffff:127.0.0.1')) {
+    if (!allowedOrigin || (!cloud && address !== '127.0.0.1' && address !== '::ffff:127.0.0.1')) {
       return sendError(res, 403, 'Acceso no permitido.');
     }
 
-    const authenticated = validSession(req.headers.cookie);
+    if (cloud && req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Cache-Control': 'no-store' });
+      return res.end('ok');
+    }
+
+    const authenticated = cloud || validSession(req.headers.cookie);
 
     if (req.method === 'GET' && ASSETS[req.url]) {
       if (req.url === '/' && !authenticated) {
@@ -143,7 +150,7 @@ function createServer(download = youtubedl, configuredTailnetOrigin = null, pass
       return sendError(res, 403, 'Solicitud no permitida.');
     }
 
-    if (req.url === '/api/login') {
+    if (req.url === '/api/login' && !cloud) {
       let body;
       try {
         body = await readJson(req);
@@ -162,6 +169,7 @@ function createServer(download = youtubedl, configuredTailnetOrigin = null, pass
       });
       return res.end(JSON.stringify({ ok: true }));
     }
+    if (req.url === '/api/login') return sendError(res, 404, 'Recurso no encontrado.');
 
     if (!authenticated) return sendError(res, 401, 'Inicia sesión.');
 
@@ -219,6 +227,11 @@ function createServer(download = youtubedl, configuredTailnetOrigin = null, pass
 }
 
 if (require.main === module) {
+  const cloud = process.env.CONVERTER_MODE === 'cloudflare';
+  if (process.env.CONVERTER_MODE && !cloud) {
+    console.error('CONVERTER_MODE no es válido.');
+    process.exit(1);
+  }
   const port = Number(process.env.PORT || 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     console.error('PORT debe ser un puerto entre 1 y 65535.');
@@ -226,7 +239,7 @@ if (require.main === module) {
   }
   let server;
   try {
-    server = createServer(youtubedl, process.env.TAILSCALE_ORIGIN, process.env.CONVERTER_PASSWORD);
+    server = createServer(youtubedl, process.env.TAILSCALE_ORIGIN, process.env.CONVERTER_PASSWORD, cloud);
   } catch (error) {
     console.error(error.message);
     process.exit(1);
@@ -235,8 +248,9 @@ if (require.main === module) {
     console.error('No se pudo iniciar el servidor:', error.message);
     process.exitCode = 1;
   });
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`Convertidor disponible en http://127.0.0.1:${port}`);
+  const host = cloud ? '0.0.0.0' : '127.0.0.1';
+  server.listen(port, host, () => {
+    console.log(`Convertidor disponible en http://${host}:${port}`);
   });
 }
 

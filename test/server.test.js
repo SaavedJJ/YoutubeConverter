@@ -7,6 +7,34 @@ const { once } = require('node:events');
 const { createServer, youtubeUrl } = require('../server');
 const password = 'contraseña de prueba';
 
+test('el modo Cloudflare sirve el conversor sin autenticación únicamente a través del proxy', async (t) => {
+  const server = createServer(async (_url, options) => {
+    await fs.writeFile(path.join(path.dirname(options.output), 'prueba.mp3'), 'audio');
+  }, null, undefined, true);
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+  const request = (method, route, host, origin) => new Promise((resolve, reject) => {
+    const req = http.request({
+      host: '127.0.0.1', port, path: route, method,
+      headers: { Host: host, ...(origin ? { Origin: origin, 'Content-Type': 'application/json' } : {}) },
+    }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode));
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.end(method === 'POST' ? JSON.stringify({ url: 'https://youtu.be/abcdefghijk', format: 'mp3' }) : undefined);
+  });
+  assert.equal(await request('GET', '/health', 'container'), 200);
+  assert.equal(await request('GET', '/', 'container'), 200);
+  assert.equal(await request('GET', '/', 'evil.example'), 403);
+  assert.equal(await request('POST', '/api/download', 'container', 'http://container'), 200);
+  assert.equal(await request('POST', '/api/download', 'container', 'https://evil.example'), 403);
+  assert.equal(await request('POST', '/api/login', 'container', 'http://container'), 404);
+});
+
 test('normaliza enlaces de vídeo y descarta parámetros de listas', () => {
   const expected = 'https://www.youtube.com/watch?v=abcdefghijk';
   assert.equal(youtubeUrl('https://youtu.be/abcdefghijk?t=10'), expected);
