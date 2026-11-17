@@ -6,7 +6,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN YOUTUBE_DL_HOST=https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp npm ci --omit=dev
 RUN node_modules/youtube-dl-exec/bin/yt-dlp --version && ffmpeg -version
 COPY server.js ./
 COPY public ./public
