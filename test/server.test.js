@@ -10,7 +10,7 @@ const password = 'contraseña de prueba';
 test('el modo Cloudflare sirve el conversor sin autenticación únicamente a través del proxy', async (t) => {
   const server = createServer(async (_url, options) => {
     await fs.writeFile(path.join(path.dirname(options.output), 'prueba.mp3'), 'audio');
-  }, null, undefined, true);
+  }, undefined, true);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise((resolve) => server.close(resolve)));
@@ -54,7 +54,7 @@ test('descarga ambos formatos, valida solicitudes y limpia archivos temporales',
     directories.push(directory);
     const extension = options.extractAudio ? 'mp3' : 'mp4';
     await fs.writeFile(path.join(directory, `prueba á.${extension}`), `contenido ${extension}`);
-  }, null, password);
+  }, password);
 
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -77,54 +77,6 @@ test('descarga ambos formatos, valida solicitudes y limpia archivos temporales',
   const loginResponse = await login(password);
   assert.equal(loginResponse.status, 200);
   const cookie = loginResponse.headers.get('set-cookie').split(';')[0];
-
-  test('permite solo el origen HTTPS Tailscale configurado sin desactivar el acceso local', async (t) => {
-    assert.throws(() => createServer(undefined, 'https://ejemplo.com'));
-    assert.throws(() => createServer(undefined, 'http://equipo.red.ts.net'));
-    assert.throws(() => createServer(undefined, 'https://equipo.red.ts.net/ruta'));
-
-    const tailnet = 'https://equipo.red.ts.net';
-    const server = createServer(async (_url, options) => {
-      await fs.writeFile(path.join(path.dirname(options.output), 'prueba.mp3'), 'audio');
-    }, tailnet, password);
-    server.listen(0, '127.0.0.1');
-    await once(server, 'listening');
-    t.after(() => new Promise((resolve) => server.close(resolve)));
-    const port = server.address().port;
-    const request = (host, origin, cookie, loginPassword) => new Promise((resolve, reject) => {
-      const body = origin && JSON.stringify(loginPassword
-        ? { password: loginPassword }
-        : { url: 'https://youtu.be/abcdefghijk', format: 'mp3' });
-      const req = http.request({
-        hostname: '127.0.0.1',
-        port,
-        path: loginPassword ? '/api/login' : origin ? '/api/download' : '/',
-        method: origin ? 'POST' : 'GET',
-        headers: { Host: host, ...(cookie ? { Cookie: cookie } : {}), ...(origin ? { Origin: origin, 'Content-Type': 'application/json' } : {}) },
-      }, (res) => {
-        const chunks = [];
-        res.on('data', (chunk) => chunks.push(chunk));
-        res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString(), cookie: res.headers['set-cookie']?.[0] }));
-        res.on('error', reject);
-      });
-      req.on('error', reject);
-      req.end(body);
-    });
-    assert.equal((await request(`127.0.0.1:${port}`)).status, 303);
-    assert.equal((await request('equipo.red.ts.net')).status, 303);
-    assert.equal((await request('otro.red.ts.net')).status, 403);
-    assert.equal((await request('equipo.red.ts.net', tailnet)).status, 401);
-    const loginResponse = await request('equipo.red.ts.net', tailnet, null, password);
-    assert.equal(loginResponse.status, 200);
-    assert.match(loginResponse.cookie, /; Secure/);
-    const remoteCookie = loginResponse.cookie.split(';')[0];
-    const response = await request('equipo.red.ts.net', tailnet, remoteCookie);
-    assert.equal(response.status, 200);
-    assert.equal(response.body, 'audio');
-    assert.equal((await request('equipo.red.ts.net', tailnet, `${remoteCookie}a`)).status, 401);
-    assert.equal((await request('equipo.red.ts.net', 'https://otro.red.ts.net', remoteCookie)).status, 403);
-    assert.equal((await request('equipo.red.ts.net', 'http://equipo.red.ts.net', remoteCookie)).status, 403);
-  });
 
   for (const format of ['mp3', 'mp4']) {
     const response = await post({ url: 'https://youtu.be/abcdefghijk', format }, { Cookie: cookie });

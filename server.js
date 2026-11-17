@@ -65,23 +65,7 @@ async function readJson(req) {
   }
 }
 
-function tailnetOrigin(value) {
-  if (!value) return null;
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error('TAILSCALE_ORIGIN debe ser una dirección HTTPS de Tailscale.');
-  }
-  if (url.protocol !== 'https:' || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+\.ts\.net$/i.test(url.hostname)
-      || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('TAILSCALE_ORIGIN debe ser una dirección HTTPS de Tailscale.');
-  }
-  return url.origin;
-}
-
-function createServer(download = youtubedl, configuredTailnetOrigin = null, password, cloud = false) {
-  const remoteOrigin = tailnetOrigin(configuredTailnetOrigin);
+function createServer(download = youtubedl, password, cloud = false) {
   if (!cloud && (typeof password !== 'string' || password.length < 12)) {
     throw new Error('CONVERTER_PASSWORD debe tener al menos 12 caracteres.');
   }
@@ -103,9 +87,7 @@ function createServer(download = youtubedl, configuredTailnetOrigin = null, pass
     const localHosts = [`127.0.0.1:${req.socket.localPort}`, `localhost:${req.socket.localPort}`];
     const allowedOrigin = cloud && host === 'container'
       ? 'http://container'
-      : localHosts.includes(host)
-      ? `http://${host}`
-      : remoteOrigin && host === new URL(remoteOrigin).host ? remoteOrigin : null;
+      : localHosts.includes(host) ? `http://${host}` : null;
     if (!allowedOrigin || (!cloud && address !== '127.0.0.1' && address !== '::ffff:127.0.0.1')) {
       return sendError(res, 403, 'Acceso no permitido.');
     }
@@ -239,7 +221,7 @@ if (require.main === module) {
   }
   let server;
   try {
-    server = createServer(youtubedl, process.env.TAILSCALE_ORIGIN, process.env.CONVERTER_PASSWORD, cloud);
+    server = createServer(youtubedl, process.env.CONVERTER_PASSWORD, cloud);
   } catch (error) {
     console.error(error.message);
     process.exit(1);
